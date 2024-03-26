@@ -266,15 +266,48 @@ app.get(
 //  -------------------- API 9  ------------------------
 
 app.get('/user/tweets/', authenticationJwt, async (request, response) => {
-  let {username} = request
-  const getUserIdQuery = `select user_id from user where username='${username}';`
-  const getUserId = await database.get(getUserIdQuery)
-  const getTweetIdsQuery = `select tweet, likes, replies, date_time as dateTime from tweet where user_id=${getUserId.user_id};`
-  const getTweetIdsArray = await database.all(getTweetIdsQuery)
-  const getTweetIds = getTweetIdsArray.map(eachId => {
-    return parseInt(eachId.tweet_id)
+  const {username} = request
+  const selectUserQuery = `
+    SELECT * FROM user WHERE username = '${username}';
+    `
+  const dbUser = await database.get(selectUserQuery)
+  const {user_id} = dbUser
+  const getTweetsQuery = `
+  SELECT * FROM tweet WHERE user_id = ${user_id}
+  ORDER BY tweet_id;
+  `
+  const tweetObjectsList = await database.all(getTweetsQuery)
+
+  const tweetIdsList = tweetObjectsList.map(object => {
+    return object.tweet_id
   })
-  console.log(getTweetIds)
+
+  const getLikesQuery = `
+    SELECT COUNT(like_id) AS likes FROM like 
+    WHERE tweet_id IN (${tweetIdsList}) GROUP BY tweet_id
+    ORDER BY tweet_id;
+    `
+  const likesObjectsList = await database.all(getLikesQuery)
+  const getRepliesQuery = `
+    SELECT COUNT(reply_id) AS replies FROM reply 
+    WHERE tweet_id IN (${tweetIdsList}) GROUP BY tweet_id
+    ORDER BY tweet_id;
+    `
+  const repliesObjectsList = await database.all(getRepliesQuery)
+  response.send(
+    tweetObjectsList.map((tweetObj, index) => {
+      const likes = likesObjectsList[index] ? likesObjectsList[index].likes : 0
+      const replies = repliesObjectsList[index]
+        ? repliesObjectsList[index].replies
+        : 0
+      return {
+        tweet: tweetObj.tweet,
+        likes,
+        replies,
+        dateTime: tweetObj.date_time,
+      }
+    }),
+  )
 })
 
 //  -------------------- API 10  ------------------------
